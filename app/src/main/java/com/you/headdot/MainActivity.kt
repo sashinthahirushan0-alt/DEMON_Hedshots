@@ -1,5 +1,6 @@
 package com.you.headdot
 
+import android.app.Activity
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
@@ -9,11 +10,26 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var status: TextView
+
+    private val captureLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+            val intent = Intent(this, CaptureService::class.java).apply {
+                action = "START"
+                putExtra("code", result.resultCode)
+                putExtra("data", result.data)
+            }
+            startForegroundService(intent)
+            status.text = "Capture: ON"
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -21,14 +37,17 @@ class MainActivity : AppCompatActivity() {
         status = TextView(this).apply { text = "" }
 
         val start = Button(this).apply {
-            text = "1. Start (capture)"
+            text = "1. Start Capture"
             setOnClickListener {
                 if (!Settings.canDrawOverlays(this@MainActivity)) {
-                    startActivity(Intent(
+                    val intent = Intent(
                         Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                         Uri.parse("package:$packageName")
-                    ))
-                } else askCapture()
+                    )
+                    startActivity(intent)
+                } else {
+                    askCapture()
+                }
             }
         }
 
@@ -50,31 +69,27 @@ class MainActivity : AppCompatActivity() {
         val stop = Button(this).apply {
             text = "Stop"
             setOnClickListener {
-                startService(Intent(this@MainActivity, CaptureService::class.java).apply { action = "STOP" })
+                val intent = Intent(this@MainActivity, CaptureService::class.java).apply {
+                    action = "STOP"
+                }
+                startService(intent)
             }
         }
 
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            addView(start); addView(acc); addView(aim); addView(stop); addView(status)
+            addView(start)
+            addView(acc)
+            addView(aim)
+            addView(stop)
+            addView(status)
         }
+
         setContentView(ScrollView(this).apply { addView(box) })
     }
 
     private fun askCapture() {
         val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        startActivityForResult(mpm.createScreenCaptureIntent(), 1)
-    }
-
-    @Deprecated("Deprecated in Java")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 1 && resultCode == RESULT_OK && data != null) {
-            startForegroundService(Intent(this, CaptureService::class.java).apply {
-                putExtra("code", resultCode)
-                putExtra("data", data)
-            })
-            status.text = "Capture: ON"
-        }
+        captureLauncher.launch(mpm.createScreenCaptureIntent())
     }
 }
